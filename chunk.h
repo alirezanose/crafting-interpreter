@@ -21,6 +21,7 @@ typedef struct {
     int count;      // Jumlah byte yang saat ini ada di dalam chunk.
     int capacity;   // Jumlah byte yang bisa disimpan oleh array 'code' sebelum perlu diubah ukurannya.
     uint8_t* code;  // Pointer ke array bytecode itu sendiri.
+    int* lines;
     ValueArray* constants;
 } Chunk;
 
@@ -29,7 +30,7 @@ void initChunk(Chunk *chunk);
 
 // Menulis sebuah byte (biasanya OpCode) ke dalam chunk.
 // Jika chunk tidak memiliki cukup kapasitas, chunk akan tumbuh secara otomatis.
-void    writeChunk(Chunk *chunk, uint8_t byte);
+void writeChunk(Chunk *chunk, uint8_t byte, int lines);
 
 // Membebaskan semua memori yang digunakan oleh sebuah chunk.
 void freeChunk(Chunk *chunk);
