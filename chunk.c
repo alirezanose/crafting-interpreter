@@ -9,6 +9,7 @@ void initChunk(Chunk *chunk) {
     chunk->count = 0;
     chunk->capacity = 0;
     chunk->code = NULL;
+    initValueArray(chunk->constants);
 }
 
 // Menambahkan sebuah byte ke akhir chunk.
@@ -33,6 +34,12 @@ void writeChunk(Chunk *chunk, uint8_t byte) {
 void freeChunk(Chunk *chunk) {
     // Bebaskan array bytecode.
     FREE_ARRAY(uint8_t, chunk->code, chunk->capacity);
+    freeValueArray(chunk->constants);
     // Atur ulang chunk ke keadaan awalnya yang kosong untuk mencegah 'use-after-free'.
     initChunk(chunk);
+}
+
+int addConstant(Chunk *chunk, Value value) {
+    writeValueArray(chunk->constants, value);
+    return chunk->constants->count - 1;
 }

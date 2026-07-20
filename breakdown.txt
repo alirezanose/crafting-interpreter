@@ -1,0 +1,108 @@
+Konsep Dasar Interpreter dan Kode Anda
+
+Tujuan: Membangun program yang dapat menjalankan bahasa pemrograman kita sendiri (misalnya, Lox).
+
+Proses utama dibagi 2 tahap:
+
+1.  Kompilasi (Compilation)
+    *   Apa itu: Proses menerjemahkan kode sumber yang bisa dibaca manusia (`print 1 + 2;`) menjadi format perantara yang lebih sederhana.
+    *   Output: Bytecode.
+
+2.  Eksekusi (Execution)
+    *   Apa itu: Proses menjalankan Bytecode yang telah dihasilkan.
+    *   Dilakukan oleh: Virtual Machine (VM).
+
+---
+
+Detail Konsep Penting:
+
+1.  Token
+    *   Apa itu: Unit terkecil yang bermakna dari kode sumber. Hasil dari proses Scanning (membaca karakter demi karakter dan mengelompokkannya).
+    *   Contoh: Dari `"1 + 2;"` menjadi `TOKEN_ANGKA (1)`, `TOKEN_TAMBAH`, `TOKEN_ANGKA (2)`, `TOKEN_TITIK_KOMA`.
+    *   **PENTING:** `Chunk` TIDAK menampung token. Token adalah input untuk Compiler.
+
+2.  Bytecode
+    *   Apa itu: Serangkaian instruksi numerik sederhana yang dipahami oleh VM kita. Ini adalah "bahasa mesin" untuk VM kita.
+    *   Setiap instruksi diwakili oleh sebuah angka unik.
+    *   Contoh: `OP_CONSTANT` (memuat angka), `OP_ADD` (menjumlahkan), `OP_RETURN` (mengakhiri eksekusi).
+    *   Ini adalah output dari Compiler.
+
+3.  OpCode (Operation Code)
+    *   Apa itu: Nama spesifik untuk setiap instruksi bytecode. Setiap OpCode memiliki nilai numerik yang unik (misalnya, `OP_RETURN` mungkin bernilai 0, `OP_CONSTANT` bernilai 1, dll.).
+    *   `enum OpCode` mendefinisikan daftar semua instruksi yang dapat dipahami oleh VM.
+
+4.  Chunk
+    *   Apa itu: Sebuah struktur data (array dinamis dari byte) yang **menampung seluruh urutan Bytecode**.
+    *   Ini adalah "wadah" fisik tempat instruksi-instruksi bytecode disimpan setelah dikompilasi, siap untuk diberikan kepada VM.
+
+5.  Virtual Machine (VM)
+    *   Apa itu: Sebuah program yang kita tulis yang membaca dan menjalankan Bytecode dari `Chunk`.
+    *   Bertindak sebagai CPU imajiner yang dirancang khusus untuk Bytecode kita.
+
+6.  Disassembler (debug.h, debug.c)
+    *   Apa itu: Alat bantu debugging.
+    *   Peran: Menerjemahkan Bytecode dari `Chunk` kembali ke format yang bisa dibaca manusia. Berguna untuk memeriksa apakah Compiler menghasilkan Bytecode yang benar.
+
+7.  Offset
+    *   Apa itu: Posisi numerik (indeks) dari sebuah instruksi di dalam array `code` di `Chunk`.
+    *   Contoh: `0000 OP_RETURN` berarti `OP_RETURN` dimulai pada indeks 0 di dalam array bytecode.
+    *   Berguna untuk melacak lokasi instruksi, baik untuk VM (sebagai Program Counter) maupun untuk debugging.
+
+---
+
+Hubungan Antar Kode Anda dan Konsep:
+
+*   `chunk.h`, `chunk.c`: Mengimplementasikan struktur `Chunk` (wadah Bytecode) dan cara mengelolanya (menulis, membebaskan).
+    *   **Detail `chunk.h`:** Mendefinisikan `enum OpCode` (instruksi bytecode) dan `struct Chunk` (struktur data untuk bytecode). Makro `GROW_CAPACITY` untuk strategi pertumbuhan kapasitas, `GROW_ARRAY` untuk alokasi ulang array, dan `FREE_ARRAY` untuk membebaskan array.
+    *   **Detail `chunk.c`:**
+        *   `initChunk()`: Menginisialisasi `Chunk` menjadi kosong.
+        *   `writeChunk()`: Menambahkan byte ke `Chunk`, menangani alokasi ulang memori jika kapasitas tidak cukup menggunakan `GROW_CAPACITY` dan `GROW_ARRAY`.
+        *   `freeChunk()`: Membebaskan memori `Chunk` menggunakan `FREE_ARRAY` dan mengatur ulang `Chunk`.
+
+*   `memory.h`, `memory.c`: Mengelola alokasi memori dinamis untuk `Chunk`.
+    *   **Detail `memory.h`:** Deklarasi makro `GROW_CAPACITY`, `GROW_ARRAY`, `FREE_ARRAY` dan fungsi `reallocate`.
+    *   **Detail `memory.c`:**
+        *   `reallocate()`: Fungsi inti yang membungkus `realloc()` dan `free()` standar C. Menangani 3 skenario:
+            1.  `newSize == 0`: Membebaskan memori (`free()`).
+            2.  `oldSize == 0, newSize > 0`: Mengalokasikan memori baru (`realloc(NULL, newSize)`).
+            3.  `oldSize > 0, newSize > 0`: Mengubah ukuran memori yang ada (`realloc(pointer, newSize)`).
+            *   Menangani kegagalan alokasi memori dengan `exit(1)`.
+
+*   `debug.h`, `debug.c`: Mengimplementasikan Disassembler (alat untuk membaca dan mencetak Bytecode).
+    *   **Detail `debug.h`:** Deklarasi fungsi `disassembleChunk()` (untuk seluruh chunk) dan `disassembleInstruction()` (untuk satu instruksi).
+    *   **Detail `debug.c`:**
+        *   `disassembleChunk(Chunk *chunk, const char *name)`:
+            *   Mencetak judul chunk (`== %s ==`).
+            *   Melakukan loop (`for`) melalui semua instruksi dalam `Chunk`.
+            *   Memanggil `disassembleInstruction()` untuk setiap instruksi dan memperbarui `offset` dengan nilai kembaliannya.
+        *   `disassembleInstruction(Chunk *chunk, int offset)`:
+            *   Mencetak `offset` instruksi (`%04d`).
+            *   Mengambil `uint8_t instruction = chunk->code[offset];` (Fetch OpCode).
+            *   Menggunakan `switch (instruction)` untuk mengenali OpCode (Decode).
+            *   Memanggil fungsi pembantu `simpleInstruction()` untuk mencetak nama OpCode (Execute/Print).
+            *   Mengembalikan `offset + 1` (untuk instruksi satu byte) agar `disassembleChunk` dapat maju ke instruksi berikutnya.
+        *   `simpleInstruction(const char *name, int offset)`: Fungsi pembantu untuk instruksi satu byte, mencetak nama instruksi dan mengembalikan `offset + 1`.
+
+*   `main.c`: Saat ini bertindak sebagai tempat pengujian untuk membuat `Chunk` dan menggunakan Disassembler.
+
+---
+
+Mekanisme Kerja Virtual Machine (VM):
+
+1.  VM TIDAK membandingkan satu bytecode dengan yang lain.
+2.  Tugas utama VM adalah **mengeksekusi** setiap instruksi bytecode satu per satu secara berurutan.
+
+Siklus Inti VM (Fetch-Decode-Execute):
+
+*   **Instruction Pointer (IP):** VM memiliki "penunjuk" internal (`ip`) yang berfungsi seperti penunjuk jari di buku resep. `ip` ini adalah offset ke instruksi bytecode berikutnya yang akan dijalankan di dalam `Chunk`.
+
+*   **1. Ambil (Fetch):**
+    *   VM membaca (mengambil) byte instruksi dari `Chunk` pada posisi yang ditunjuk oleh `ip`. Byte ini adalah sebuah OpCode (misalnya, nilai numerik `OP_RETURN`).
+
+*   **2. Pahami (Decode):**
+    *   VM melihat nilai OpCode yang baru saja diambil. Menggunakan struktur seperti `switch` statement, VM mengidentifikasi OpCode tersebut (misalnya, mengenali bahwa angka `0` berarti `OP_RETURN`).
+
+*   **3. Jalankan (Execute):**
+    *   Berdasarkan identifikasi OpCode, VM menjalankan kode C yang sesuai untuk melakukan aksi instruksi tersebut. Contoh: jika `OP_RETURN`, VM akan menghentikan eksekusi.
+
+*   **Ulangi:** Setelah satu instruksi dijalankan, `ip` dimajukan ke instruksi berikutnya, dan siklus ini berlanjut sampai semua instruksi di `Chunk` selesai atau sampai instruksi `OP_RETURN` ditemukan.
