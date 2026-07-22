@@ -7,7 +7,7 @@
 void initValueArray(ValueArray* array){
     array->count = 0;
     array->capacity = 0;
-    array->values = NULL    ;
+    array->values = NULL;
 }
 
 void writeValueArray(ValueArray* array, Value value) {

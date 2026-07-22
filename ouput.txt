@@ -1,0 +1,6 @@
+== test chunk ==
+0000  123OP_CONSTANT_LONG    2 '1
+'
+0004    | OP_CONSTANT_LONG    3 '2
+'
+0008    | OP_RETURN

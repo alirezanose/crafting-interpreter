@@ -14,15 +14,24 @@
 typedef enum {
     OP_CONSTANT,
     OP_RETURN, // Instruksi untuk kembali dari fungsi saat ini.
+    OP_CONSTANT_LONG,
 } OpCode;
+
+typedef struct {
+    int count;
+    int line;
+} LineRun;
 
 // Chunk adalah array dinamis yang menyimpan bytecode.
 typedef struct {
     int count;      // Jumlah byte yang saat ini ada di dalam chunk.
     int capacity;   // Jumlah byte yang bisa disimpan oleh array 'code' sebelum perlu diubah ukurannya.
     uint8_t* code;  // Pointer ke array bytecode itu sendiri.
-    int* lines;
-    ValueArray* constants;
+    ValueArray constants;
+
+    int line_capacity;
+    int line_count;
+    LineRun* lines;
 } Chunk;
 
 // Menginisialisasi sebuah chunk baru (kosong).
@@ -36,5 +45,9 @@ void writeChunk(Chunk *chunk, uint8_t byte, int lines);
 void freeChunk(Chunk *chunk);
 
 int addConstant(Chunk *chunk, Value value);
+
+void writeConstant(Chunk *chunk, Value value, int line);
+
+int getLine(Chunk *chunk, int instruction_offset);
 
 #endif
