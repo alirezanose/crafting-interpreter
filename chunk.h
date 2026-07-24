@@ -14,6 +14,11 @@
 typedef enum {
     OP_CONSTANT,
     OP_RETURN, // Instruksi untuk kembali dari fungsi saat ini.
+    OP_NEGATE,
+    OP_ADD,
+    OP_SUBTRACT,
+    OP_MULTIPLY,
+    OP_DIVIDE,
     OP_CONSTANT_LONG,
 } OpCode;
 

@@ -53,36 +53,8 @@ Detail Konsep Penting:
 Hubungan Antar Kode Anda dan Konsep:
 
 *   `chunk.h`, `chunk.c`: Mengimplementasikan struktur `Chunk` (wadah Bytecode) dan cara mengelolanya (menulis, membebaskan).
-    *   **Detail `chunk.h`:** Mendefinisikan `enum OpCode` (instruksi bytecode) dan `struct Chunk` (struktur data untuk bytecode). Makro `GROW_CAPACITY` untuk strategi pertumbuhan kapasitas, `GROW_ARRAY` untuk alokasi ulang array, dan `FREE_ARRAY` untuk membebaskan array.
-    *   **Detail `chunk.c`:**
-        *   `initChunk()`: Menginisialisasi `Chunk` menjadi kosong.
-        *   `writeChunk()`: Menambahkan byte ke `Chunk`, menangani alokasi ulang memori jika kapasitas tidak cukup menggunakan `GROW_CAPACITY` dan `GROW_ARRAY`.
-        *   `freeChunk()`: Membebaskan memori `Chunk` menggunakan `FREE_ARRAY` dan mengatur ulang `Chunk`.
-
 *   `memory.h`, `memory.c`: Mengelola alokasi memori dinamis untuk `Chunk`.
-    *   **Detail `memory.h`:** Deklarasi makro `GROW_CAPACITY`, `GROW_ARRAY`, `FREE_ARRAY` dan fungsi `reallocate`.
-    *   **Detail `memory.c`:**
-        *   `reallocate()`: Fungsi inti yang membungkus `realloc()` dan `free()` standar C. Menangani 3 skenario:
-            1.  `newSize == 0`: Membebaskan memori (`free()`).
-            2.  `oldSize == 0, newSize > 0`: Mengalokasikan memori baru (`realloc(NULL, newSize)`).
-            3.  `oldSize > 0, newSize > 0`: Mengubah ukuran memori yang ada (`realloc(pointer, newSize)`).
-            *   Menangani kegagalan alokasi memori dengan `exit(1)`.
-
 *   `debug.h`, `debug.c`: Mengimplementasikan Disassembler (alat untuk membaca dan mencetak Bytecode).
-    *   **Detail `debug.h`:** Deklarasi fungsi `disassembleChunk()` (untuk seluruh chunk) dan `disassembleInstruction()` (untuk satu instruksi).
-    *   **Detail `debug.c`:**
-        *   `disassembleChunk(Chunk *chunk, const char *name)`:
-            *   Mencetak judul chunk (`== %s ==`).
-            *   Melakukan loop (`for`) melalui semua instruksi dalam `Chunk`.
-            *   Memanggil `disassembleInstruction()` untuk setiap instruksi dan memperbarui `offset` dengan nilai kembaliannya.
-        *   `disassembleInstruction(Chunk *chunk, int offset)`:
-            *   Mencetak `offset` instruksi (`%04d`).
-            *   Mengambil `uint8_t instruction = chunk->code[offset];` (Fetch OpCode).
-            *   Menggunakan `switch (instruction)` untuk mengenali OpCode (Decode).
-            *   Memanggil fungsi pembantu `simpleInstruction()` untuk mencetak nama OpCode (Execute/Print).
-            *   Mengembalikan `offset + 1` (untuk instruksi satu byte) agar `disassembleChunk` dapat maju ke instruksi berikutnya.
-        *   `simpleInstruction(const char *name, int offset)`: Fungsi pembantu untuk instruksi satu byte, mencetak nama instruksi dan mengembalikan `offset + 1`.
-
 *   `main.c`: Saat ini bertindak sebagai tempat pengujian untuk membuat `Chunk` dan menggunakan Disassembler.
 
 ---
@@ -106,3 +78,151 @@ Siklus Inti VM (Fetch-Decode-Execute):
     *   Berdasarkan identifikasi OpCode, VM menjalankan kode C yang sesuai untuk melakukan aksi instruksi tersebut. Contoh: jika `OP_RETURN`, VM akan menghentikan eksekusi.
 
 *   **Ulangi:** Setelah satu instruksi dijalankan, `ip` dimajukan ke instruksi berikutnya, dan siklus ini berlanjut sampai semua instruksi di `Chunk` selesai atau sampai instruksi `OP_RETURN` ditemukan.
+
+---
+---
+
+### Bab 2: Mesin Virtual - Jantung Pelaksana (Versi Revisi dengan Contoh Kode)
+
+Sekarang kita memiliki `Chunk` yang berisi bytecode, kita perlu sesuatu untuk **menjalankannya**. Inilah tugas Mesin Virtual (VM). VM adalah program yang kita tulis yang bertindak sebagai "CPU" imajiner untuk bytecode kita.
+
+#### A. Konsep Kunci: Tumpukan (Stack) - Meja Kerja VM
+
+**Kenapa harus ada Stack?**
+Bayangkan Anda menghitung ekspresi matematika seperti `(5 - 3) * 4`. Anda tidak bisa melakukannya sekaligus. Anda harus menyimpan hasil sementara (`5 - 3` adalah `2`) di suatu tempat. **Stack** adalah "tempat penyimpanan sementara" ini. Ia bekerja dengan prinsip **LIFO (Last-In, First-Out)**, seperti tumpukan piring.
+
+**Bagaimana ini diimplementasikan?**
+*   **Struktur Data:** Di `vm.h`, `struct VM` memiliki array untuk menyimpan data stack dan sebuah pointer untuk melacak puncaknya.
+    ```c
+    // Contoh di vm.h
+    typedef struct {
+      // ...
+      Value stack[STACK_MAX]; // Array untuk menyimpan data.
+      Value* stackTop;      // Pointer ke slot kosong berikutnya.
+    } VM;
+    ```
+*   **Operasi Stack:** Di `vm.c`, kita punya fungsi untuk memanipulasi stack.
+    ```c
+    // Contoh di vm.c
+    static void push(Value value) {
+      *vm.stackTop = value; // Simpan nilai di slot kosong teratas.
+      vm.stackTop++;      // Majukan pointer ke slot kosong berikutnya.
+    }
+
+    static Value pop() {
+      vm.stackTop--;      // Mundurkan pointer untuk menunjuk ke nilai teratas.
+      return *vm.stackTop; // Kembalikan nilai tersebut.
+    }
+    ```
+
+#### B. `struct VM` - Otak Operasi
+
+**Kenapa harus ada `struct VM`?**
+Untuk menjalankan tugasnya, VM perlu melacak beberapa hal sekaligus. `struct VM` menggabungkan semua "status" ini ke dalam satu wadah.
+
+**Bagaimana ini diimplementasikan?**
+```c
+// Contoh di vm.h
+typedef struct {
+  Chunk* chunk;    // "Buku resep" bytecode yang sedang dieksekusi.
+  uint8_t* ip;     // "Penunjuk jari" ke instruksi berikutnya di dalam resep.
+  Value stack[STACK_MAX]; // "Meja kerja" untuk nilai sementara.
+  Value* stackTop;      // Penanda di mana harus meletakkan barang berikutnya di meja kerja.
+} VM;
+```
+
+#### C. Siklus Eksekusi Inti - Fungsi `run()` (`vm.c`)
+
+**Kenapa harus ada `run()`?**
+Ini adalah mesin penggerak utama VM. Ia berisi loop tak terbatas yang melakukan siklus **Fetch-Decode-Execute** berulang kali.
+
+**Bagaimana ini diimplementasikan?**
+Fungsi `run()` di `vm.c` adalah jantungnya. Mari kita lihat bagian-bagian utamanya.
+
+1.  **Loop `for(;;)` dan Macro:**
+    Loop ini memastikan VM terus bekerja. Untuk membuat kode di dalamnya lebih bersih, kita menggunakan *macro*.
+    ```c
+    // Contoh di vm.c, di dalam run()
+    #define READ_BYTE() (*vm.ip++)
+    #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+
+    for (;;) {
+      uint8_t instruction;
+      switch (instruction = READ_BYTE()) {
+        // ... semua kasus OpCode ada di sini ...
+      }
+    }
+    ```
+    *   `READ_BYTE()`: Mengambil byte di posisi `ip` saat ini, lalu memajukan `ip`. Ini adalah langkah **Fetch**.
+    *   `READ_CONSTANT()`: Menggunakan `READ_BYTE()` untuk mendapatkan indeks, lalu mengambil nilai dari kolam konstanta.
+
+2.  **Decode & Execute dengan `switch`:**
+    Setiap `case` di dalam `switch` adalah implementasi dari satu OpCode.
+
+    *   **`case OP_CONSTANT:`**
+        *   **Tujuan:** Mengambil nilai dari kolam konstanta dan meletakkannya di puncak stack.
+        ```c
+        // Contoh di vm.c, di dalam switch
+        case OP_CONSTANT: {
+          Value constant = READ_CONSTANT(); // Ambil nilai dari kolam konstanta.
+          push(constant);                  // Dorong ke atas stack.
+          break;
+        }
+        ```
+
+    *   **`case OP_ADD:`** (atau `BINARY_OP` macro)
+        *   **Tujuan:** Mengambil dua nilai teratas dari stack, menjumlahkannya, dan menyimpan hasilnya kembali ke stack.
+        ```c
+        // Contoh di vm.c, di dalam switch (jika menggunakan macro)
+        case OP_ADD: BINARY_OP(+); break;
+
+        // Apa yang sebenarnya dilakukan oleh BINARY_OP(+):
+        // {
+        //   double b = pop();
+        //   double a = pop();
+        //   push(a + b);
+        // }
+        ```
+        Ini menunjukkan dengan jelas penggunaan stack: ambil dua, operasikan, kembalikan satu.
+
+    *   **`case OP_RETURN:`**
+        *   **Tujuan:** Mengakhiri eksekusi dan menampilkan hasil akhir.
+        ```c
+        // Contoh di vm.c, di dalam switch
+        case OP_RETURN: {
+          printValue(pop()); // Ambil hasil akhir dari stack dan cetak.
+          printf("\n");
+          return INTERPRET_OK; // Keluar dari fungsi run() dan hentikan loop.
+        }
+        ```
+
+#### D. Menyatukan Semuanya - `interpret()` dan `main.c`
+
+*   **`interpret(Chunk* chunk)` (`vm.c`):** Ini adalah fungsi "pintu depan" untuk VM.
+    ```c
+    // Contoh di vm.c
+    InterpretResult interpret(Chunk* chunk) {
+      vm.chunk = chunk;
+      vm.ip = vm.chunk->code; // Atur 'ip' untuk mulai dari awal bytecode.
+      return run();           // Mulai siklus eksekusi!
+    }
+    ```
+
+*   **`main.c`:** Sekarang `main.c` bertindak sebagai "host" yang menyiapkan dan menjalankan VM.
+    ```c
+    // Contoh di main.c
+    int main(...) {
+      initVM(); // Siapkan VM (reset stack).
+
+      Chunk chunk;
+      initChunk(&chunk);
+      // ... (Tulis bytecode ke chunk, seperti di contoh OP_CONSTANT_LONG Anda)
+
+      interpret(&chunk); // Berikan chunk ke VM dan jalankan.
+
+      freeVM(); // Bersihkan VM.
+      freeChunk(&chunk);
+      return 0;
+    }
+    ```
+Dengan ini, semoga hubungan antara konsep ("stack", "VM", "siklus eksekusi") dan kode C yang sebenarnya (`struct`, `for`, `switch`, `push`, `pop`) menjadi jauh lebih jelas.

@@ -5,6 +5,8 @@
 #ifndef COMMON_H
 #define COMMON_H
 
+#define DEBUG_TRACE_EXECUTION   
+
 // Untuk tipe data boolean (true/false)
 #include <stdbool.h>
 // Untuk tipe data size_t dan NULL
